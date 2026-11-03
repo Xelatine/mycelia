@@ -1,0 +1,21 @@
+# Generated corpus artefacts: the scripts rebuild them from Hugging Face.
+data/train.parquet
+data/corpus_fr.txt
+data/tokenizer.json
+data/*.pt
+baseline_ppl.txt
+history.json
+
+# Runs and debug logs
+logs_*.txt
+*.log
+runs/
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.cache/
+.venv/
+venv/
+.DS_Store
+mycelia_v2.zip

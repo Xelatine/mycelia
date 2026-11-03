@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mycelia — cockpit neuronal</title>
+<link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+<header>
+  <div class="brand">
+    <span class="dot"></span>
+    <h1>MYCELIA</h1>
+    <span class="sub">cerveau à câblage émergent</span>
+  </div>
+  <div class="head-stats">
+    <div class="pill" id="pill-step">step —</div>
+    <div class="pill" id="pill-phase">phase —</div>
+    <div class="pill" id="pill-device">—</div>
+    <div class="pill state" id="pill-state">au repos</div>
+  </div>
+</header>
+
+<main>
+  <!-- ---------------------------------------------------------- column 1 -->
+  <section class="col left">
+    <div class="panel">
+      <h2>Pilotage</h2>
+      <div class="row">
+        <select id="ctl-config" title="configuration"></select>
+        <input id="ctl-seed" type="number" placeholder="seed" value="42" title="graine" />
+        <input id="ctl-steps" type="number" placeholder="steps" title="nombre de steps" />
+      </div>
+      <div class="row buttons">
+        <button id="ctl-start" class="primary">▶ Lancer</button>
+        <button id="ctl-pause">⏸ Pause</button>
+        <button id="ctl-resume">⤵ Reprendre</button>
+        <button id="ctl-stop" class="danger">⏹ Stop</button>
+        <button id="ctl-save">💾 Sauver</button>
+      </div>
+      <div class="hint" id="ctl-hint">—</div>
+      <div class="ctl-state" id="ctl-state">—</div>
+    </div>
+
+    <div class="panel">
+      <h2>Hyperparamètres vivants</h2>
+      <label>learning rate <output id="out-lr">3e-4</output>
+        <input type="range" id="sl-lr" min="1" max="30" step="1" value="10" /></label>
+      <label>pression L1 <output id="out-l1">×1.0</output>
+        <input type="range" id="sl-l1" min="0" max="30" step="1" value="10" /></label>
+      <label>température du routeur τ <output id="out-tau">×1.0</output>
+        <input type="range" id="sl-tau" min="2" max="30" step="1" value="10" /></label>
+      <label>température de génération <output id="out-temp">0.85</output>
+        <input type="range" id="sl-temp" min="1" max="150" step="1" value="85" /></label>
+      <div class="hint">appliqué au prochain pas, sans redémarrer</div>
+    </div>
+
+    <div class="panel">
+      <h2>Population</h2>
+      <div class="kpis" id="kpis"></div>
+      <canvas id="chart-nodes" height="70"></canvas>
+    </div>
+
+    <div class="panel">
+      <h2>Courbes</h2>
+      <canvas id="chart-ppl" height="80"></canvas>
+      <div class="legend"><span class="k ppl">perplexité (validation)</span>
+        <span class="k loss">perte d'entraînement</span></div>
+      <canvas id="chart-edges" height="70"></canvas>
+      <div class="legend"><span class="k edges">arêtes vivantes</span></div>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------- column 2 -->
+  <section class="col center">
+    <div class="panel graph-panel">
+      <div class="panel-head">
+        <h2>Réseau vivant</h2>
+        <div class="legend inline">
+          <span class="k mature">mûr</span>
+          <span class="k new">naissance</span>
+          <span class="k active">actif</span>
+          <span class="k isolated">isolé</span>
+          <span class="k special">[e]/[s]</span>
+        </div>
+        <div class="row tiny">
+          <label class="chk"><input type="checkbox" id="opt-impulses" checked /> impulsions</label>
+          <label class="chk"><input type="checkbox" id="opt-labels" /> étiquettes</label>
+          <button id="g-reset" class="mini">recentrer</button>
+        </div>
+      </div>
+      <canvas id="graph"></canvas>
+      <div class="graph-foot">
+        <span id="graph-info">—</span>
+        <span id="graph-hover"></span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Chat de test <span class="note">le trajet du signal s'anime à chaque mot</span></h2>
+      <div class="chat">
+        <div class="row">
+          <input id="chat-prompt" value="Il était une fois" maxlength="300" />
+          <button id="chat-send" class="primary">Générer</button>
+        </div>
+        <div class="row tiny">
+          <label>top-p <input id="chat-topp" type="number" value="0.9" step="0.05" min="0.1" max="1" /></label>
+          <label>tokens <input id="chat-tokens" type="number" value="32" step="1" min="1" max="300" /></label>
+          <label class="chk"><input type="checkbox" id="chat-live" checked /> rejouer les impulsions</label>
+        </div>
+        <div class="chat-out" id="chat-out">—</div>
+        <div class="chat-meta" id="chat-meta"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------- column 3 -->
+  <section class="col right">
+    <div class="panel">
+      <h2>Fiche nœud</h2>
+      <div id="node-card" class="node-card">clique un nœud dans le graphe</div>
+    </div>
+
+    <div class="panel">
+      <h2>Journal d'événements</h2>
+      <div class="journal" id="journal"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Adjacence creuse</h2>
+      <canvas id="heat" height="150"></canvas>
+      <h2 class="mt">Similarité des nœuds</h2>
+      <canvas id="sim" height="150"></canvas>
+    </div>
+
+    <div class="panel">
+      <h2>Diagnostic</h2>
+      <div id="diagnose" class="diagnose">—</div>
+    </div>
+  </section>
+</main>
+
+<div id="toast" class="hidden"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

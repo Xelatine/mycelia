@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mycelia — cockpit</title>
+<link rel="stylesheet" href="https://unpkg.com/uplot@1.6.30/dist/uPlot.min.css" />
+<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+<script src="https://unpkg.com/uplot@1.6.30/dist/uPlot.iife.min.js"></script>
+<style>
+  :root {
+    --bg: #05080f; --panel: #0b1220; --panel2: #0f172a; --line: #1e293b;
+    --text: #e2e8f0; --muted: #94a3b8; --green: #4ade80; --orange: #fb923c;
+    --grey: #94a3b8; --blue: #60a5fa; --violet: #a78bfa; --red: #f87171;
+    --yellow: #facc15;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif; font-size: 13px; }
+  header { display: flex; align-items: center; gap: 16px; padding: 10px 16px;
+    border-bottom: 1px solid var(--line); background: linear-gradient(90deg,#070c17,#0b1220); }
+  header h1 { font-size: 15px; letter-spacing: .18em; margin: 0; font-weight: 700; }
+  header h1 span { color: var(--green); }
+  .pill { padding: 2px 9px; border-radius: 999px; border: 1px solid var(--line);
+    color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+  .pill.running { color: var(--green); border-color: #14532d; background: #052e16; }
+  .pill.paused { color: var(--orange); border-color: #7c2d12; background: #1c0f05; }
+  .pill.stopped, .pill.training_done { color: var(--muted); }
+  .pill.error { color: var(--red); border-color: #7f1d1d; background: #1f0707; }
+  .pill.observation { color: var(--blue); border-color: #1e3a8a; background: #071228; }
+  .spacer { flex: 1; }
+  main { display: grid; grid-template-columns: 250px 1fr 330px; height: calc(100% - 49px); }
+  .col { min-width: 0; overflow: auto; border-right: 1px solid var(--line); }
+  .col:last-child { border-right: 0; border-left: 1px solid var(--line); }
+  .block { padding: 12px; border-bottom: 1px solid var(--line); }
+  .block h2 { font-size: 10px; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 8px; font-weight: 600; }
+  .vitals { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; }
+  .vital b { display: block; font-size: 15px; font-variant-numeric: tabular-nums; }
+  .vital span { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
+  .controls { display: flex; gap: 6px; }
+  button { background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 7px; padding: 6px 10px; cursor: pointer; font-size: 13px; }
+  button:hover { border-color: #334155; background: #16233c; }
+  button.primary { border-color: #14532d; background: #052e16; color: var(--green); }
+  .slider { margin: 9px 0; }
+  .slider label { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; }
+  .slider input { width: 100%; accent-color: var(--green); }
+  .legend { display: grid; gap: 5px; font-size: 11px; color: var(--muted); }
+  .swatch { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+  #graph { width: 100%; height: 100%; min-height: 320px; }
+  .graphWrap { position: relative; height: 56%; border-bottom: 1px solid var(--line); }
+  .graphNote { position: absolute; left: 10px; bottom: 8px; color: #475569; font-size: 10px; }
+  .charts { padding: 8px 10px 12px; display: grid; gap: 8px; }
+  .chart { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px; }
+  .chatLog { height: 150px; overflow: auto; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px; font-size: 12.5px; line-height: 1.45; white-space: pre-wrap; }
+  .chatRow { display: flex; gap: 6px; margin-top: 8px; }
+  .chatRow input { flex: 1; min-width: 0; background: var(--panel); border: 1px solid var(--line);
+    color: var(--text); border-radius: 7px; padding: 7px 9px; }
+  #chatPath { margin-top: 8px; color: var(--blue); font-size: 11px; min-height: 16px; }
+  #log { height: 120px; overflow: auto; font-family: ui-monospace, Consolas, monospace;
+    font-size: 11px; color: var(--muted); background: var(--panel); border: 1px solid var(--line);
+    border-radius: 8px; padding: 6px; }
+  .event { padding: 1px 0; border-bottom: 1px dashed #111c30; }
+  .event.growth { color: var(--yellow); }
+  .event.error { color: var(--red); }
+  .event.hyperparams { color: var(--blue); }
+  #fiche { font-size: 11.5px; color: var(--muted); line-height: 1.5; word-break: break-word; }
+  #fiche b { color: var(--text); }
+  .err { color: var(--red); background: #1f0707; border: 1px solid #7f1d1d;
+    padding: 8px 12px; border-radius: 8px; display: none; }
+  .hint { color: #64748b; font-size: 10.5px; line-height: 1.4; }
+</style>
+</head>
+<body>
+<header>
+  <h1>MYCE<span>LIA</span></h1>
+  <span class="pill" id="status">—</span>
+  <span class="pill" id="step">step 0</span>
+  <span class="pill" id="device">—</span>
+  <span class="pill" id="dataMode">—</span>
+  <div class="spacer"></div>
+  <span class="pill" id="uptime">0 s</span>
+</header>
+
+<div class="err" id="error"></div>
+
+<main>
+  <aside class="col">
+    <div class="block">
+      <h2>signes vitaux</h2>
+      <div class="vitals">
+        <div class="vital"><b id="vLoss">—</b><span>perte</span></div>
+        <div class="vital"><b id="vPpl">—</b><span>perplexité</span></div>
+        <div class="vital"><b id="vPool">—</b><span>pool</span></div>
+        <div class="vital"><b id="vAlive">—</b><span>nœuds vivants</span></div>
+        <div class="vital"><b id="vEdges">—</b><span>arêtes</span></div>
+        <div class="vital"><b id="vBirths">—</b><span>naissances</span></div>
+        <div class="vital"><b id="vEdgeDeaths">—</b><span>morts d'arêtes</span></div>
+        <div class="vital"><b id="vNodeDeaths">—</b><span>morts de nœuds</span></div>
+        <div class="vital"><b id="vCemetery">—</b><span>cimetière</span></div>
+        <div class="vital"><b id="vLr">—</b><span>lr</span></div>
+      </div>
+    </div>
+
+    <div class="block">
+      <h2>contrôles</h2>
+      <div class="controls">
+        <button class="primary" id="btnStart" title="démarrer / reprendre">▶</button>
+        <button id="btnPause" title="pause">⏸</button>
+        <button id="btnStop" title="arrêter">⏹</button>
+      </div>
+      <div class="slider">
+        <label>température <span id="lblTemp">0.80</span></label>
+        <input type="range" id="temp" min="0" max="1.5" step="0.05" value="0.8" />
+      </div>
+      <div class="slider">
+        <label>learning rate <span id="lblLr">3.0e-4</span></label>
+        <input type="range" id="lr" min="0" max="100" step="1" value="60" />
+      </div>
+      <div class="slider">
+        <label>pression L1 <span id="lblL1">1.0e-4</span></label>
+        <input type="range" id="l1" min="0" max="100" step="1" value="10" />
+      </div>
+      <p class="hint">Les sliders agissent à la volée : l'entraînement n'est pas relancé.</p>
+    </div>
+
+    <div class="block">
+      <h2>légende</h2>
+      <div class="legend">
+        <div><span class="swatch" style="background:#4ade80"></span>actif, câblé</div>
+        <div><span class="swatch" style="background:#fb923c"></span>né depuis &lt; 300 steps</div>
+        <div><span class="swatch" style="background:#94a3b8"></span>isolé — mort imminente (clignote)</div>
+        <div><span class="swatch" style="background:#a78bfa"></span>nœuds 0 (entrée) et 1 (sortie)</div>
+        <div><span class="swatch" style="background:#facc15"></span>impulsion : le signal passe</div>
+      </div>
+      <p class="hint" style="margin-top:10px">Les morts ne sont pas dessinés ; ils sont comptés dans le cimetière.</p>
+    </div>
+
+    <div class="block">
+      <h2>journal</h2>
+      <div id="log"></div>
+    </div>
+  </aside>
+
+  <section class="col" style="border-right:0">
+    <div class="graphWrap">
+      <div id="graph"></div>
+      <div class="graphNote" id="graphNote"></div>
+    </div>
+    <div class="charts">
+      <div class="chart"><div id="lossChart"></div></div>
+      <div class="chart"><div id="pplChart"></div></div>
+      <div class="chart"><div id="popChart"></div></div>
+    </div>
+  </section>
+
+  <aside class="col">
+    <div class="block">
+      <h2>parler au cerveau</h2>
+      <div class="chatLog" id="chatLog">Il était une fois…</div>
+      <div class="chatRow">
+        <input id="chatPrompt" value="Il était une fois" />
+        <button class="primary" id="chatSend">parler</button>
+      </div>
+      <div id="chatPath"></div>
+      <p class="hint">Chaque token est émis par le cerveau vivant ; son trajet s'illumine dans le graphe.</p>
+    </div>
+    <div class="block">
+      <h2>fiche du nœud</h2>
+      <div id="fiche">Cliquez un nœud du graphe.</div>
+    </div>
+  </aside>
+</main>
+
+<script>
+"use strict";
+
+const MAX_DRAW = 1500;
+const state = {
+  snapshot: null,
+  nodes: new vis.DataSet([]),
+  edges: new vis.DataSet([]),
+  network: null,
+  charts: {},
+  flashing: new Map(),
+  maxEdges: 4000,
+  chatRunning: false,
+};
+
+/* ------------------------------------------------------------------ */
+/* Network                                                             */
+/* ------------------------------------------------------------------ */
+function initNetwork() {
+  const container = document.getElementById("graph");
+  const data = { nodes: state.nodes, edges: state.edges };
+  const options = {
+    autoResize: true,
+    physics: {
+      solver: "barnesHut",
+      barnesHut: { gravitationalConstant: -9000, springLength: 90, springConstant: 0.03, damping: 0.4 },
+      stabilization: { enabled: true, iterations: 120 },
+    },
+    interaction: { hover: true, tooltipDelay: 200 },
+    nodes: { shape: "dot", size: 5, borderWidth: 1, font: { color: "#cbd5e1", size: 9 } },
+    edges: { width: 1, smooth: { type: "continuous" }, arrows: { to: { enabled: true, scaleFactor: 0.35 } } },
+  };
+  state.network = new vis.Network(container, data, options);
+  state.network.on("click", async (params) => {
+    if (!params.nodes.length) return;
+    await showNode(params.nodes[0]);
+  });
+}
+
+function nodeColor(node) {
+  if (node.io) return "#a78bfa";
+  if (node.age < 300) return "#fb923c";
+  return "#4ade80";
+}
+
+function applyGraph(snap) {
+  const drawn = new Set();
+  const nodes = [];
+  let shown = 0;
+  for (const node of snap.nodes) {
+    if (!node.alive) continue;
+    if (shown >= MAX_DRAW) break;
+    shown += 1;
+    drawn.add(node.id);
+    nodes.push({
+      id: node.id,
+      label: node.id < 2 ? String(node.id) : "",
+      title: `nœud ${node.id} · gate ${node.gate} · âge ${node.age}`,
+      color: { background: nodeColor(node), border: "#0b1220" },
+      size: node.io ? 11 : 5,
+    });
+  }
+  state.nodes.update(nodes);
+  const keep = new Set(nodes.map((n) => n.id));
+  for (const node of state.nodes.get()) {
+    if (!keep.has(node.id)) state.nodes.remove(node.id);
+  }
+
+  const degrees = new Map();
+  const edges = [];
+  for (const [src, tgt, mask] of snap.edges) {
+    degrees.set(src, (degrees.get(src) || 0) + 1);
+    degrees.set(tgt, (degrees.get(tgt) || 0) + 1);
+    if (!drawn.has(src) || !drawn.has(tgt)) continue;
+    if (edges.length >= state.maxEdges) break;
+    edges.push({
+      id: `${src}_${tgt}`,
+      from: src,
+      to: tgt,
+      color: { color: mask > 0.6 ? "rgba(74,222,128,.42)" : "rgba(74,222,128,.16)" },
+      width: Math.max(0.6, Math.min(3, mask * 2.4)),
+      title: `force ${mask}`,
+    });
+  }
+  state.edges.update(edges);
+  const edgeIds = new Set(edges.map((e) => e.id));
+  for (const edge of state.edges.get()) {
+    if (!edgeIds.has(edge.id)) state.edges.remove(edge.id);
+  }
+
+  // Isolated nodes are drawn grey and blink: they are about to be buried.
+  for (const node of nodes) {
+    if (!(degrees.get(node.id) > 0)) {
+      node.color = { background: "#94a3b8", border: "#0b1220" };
+      node.title = `nœud ${node.id} · isolé · mort imminente`;
+      state.nodes.update(node);
+    }
+  }
+  const shownNodes = nodes.length;
+  document.getElementById("graphNote").textContent =
+    `${shownNodes} nœuds affichés / ${snap.nodes.length} · ${edges.length} synapses utilisées` +
+    (snap.nodes.length > MAX_DRAW ? ` (filtre ${MAX_DRAW})` : "");
+}
+
+setInterval(() => {
+  // Blink isolated nodes (grey ↔ darker) so "mort imminente" is visible.
+  for (const node of state.nodes.get()) {
+    if (node.color && node.color.background === "#94a3b8") {
+      node.color = { background: "#475569", border: "#0b1220" };
+    } else if (node.color && node.color.background === "#475569") {
+      node.color = { background: "#94a3b8", border: "#0b1220" };
+    } else continue;
+    state.nodes.update(node);
+  }
+}, 500);
+
+/* ------------------------------------------------------------------ */
+/* Impulses                                                            */
+/* ------------------------------------------------------------------ */
+function flash(trace) {
+  if (!trace) return;
+  const touched = [];
+  for (const hop of Object.keys(trace)) {
+    for (const [src, tgt] of trace[hop]) {
+      const id = `${src}_${tgt}`;
+      const edge = state.edges.get(id);
+      if (!edge) continue;
+      touched.push(id);
+      state.edges.update({
+        id, color: { color: "#facc15" }, width: 5,
+      });
+    }
+  }
+  if (!touched.length) return;
+  clearTimeout(flash._timer);
+  flash._timer = setTimeout(() => {
+    for (const id of touched) {
+      const edge = state.edges.get(id);
+      if (!edge) continue;
+      state.edges.update({ id, color: { color: "rgba(74,222,128,.30)" }, width: 1 });
+    }
+  }, 300);
+}
+
+/* ------------------------------------------------------------------ */
+/* Charts                                                              */
+/* ------------------------------------------------------------------ */
+function chart(el, series, opts = {}) {
+  const width = Math.max(320, el.parentElement.clientWidth - 8);
+  const local = {
+    width, height: 118,
+    series: [{}, ...series],
+    axes: [
+      { stroke: "#64748b", grid: { stroke: "#16233c", width: 1 }, ticks: { stroke: "#334155" } },
+      { stroke: "#64748b", grid: { stroke: "#16233c", width: 1 }, ticks: { stroke: "#334155" } },
+    ],
+    scales: { x: { time: false }, y: opts.log ? { distr: 3, log: 10 } : { auto: true } },
+    legend: { show: true, fill: "#0b1220" },
+    cursor: { show: false },
+  };
+  return new uPlot(local, [[], ...series.map(() => [])], el);
+}
+
+function initCharts() {
+  state.charts.loss = chart(document.getElementById("lossChart"), [
+    { label: "perte", stroke: "#f87171", width: 2 },
+  ]);
+  state.charts.ppl = chart(document.getElementById("pplChart"), [
+    { label: "perplexité", stroke: "#60a5fa", width: 2 },
+  ], { log: true });
+  state.charts.pop = chart(document.getElementById("popChart"), [
+    { label: "pool", stroke: "#a78bfa", width: 2 },
+    { label: "arêtes", stroke: "#4ade80", width: 2 },
+    { label: "nœuds vivants", stroke: "#fb923c", width: 1.5 },
+  ]);
+}
+
+function updateCharts(history) {
+  if (!history || !history.length) return;
+  const xs = history.map((row) => row.step);
+  state.charts.loss.setData([xs, history.map((row) => row.loss)]);
+  state.charts.ppl.setData([xs, history.map((row) => row.ppl)]);
+  state.charts.pop.setData([
+    xs,
+    history.map((row) => row.pool),
+    history.map((row) => row.edges),
+    history.map((row) => row.nodes),
+  ]);
+}
+
+/* ------------------------------------------------------------------ */
+/* HUD                                                                 */
+/* ------------------------------------------------------------------ */
+const fmt = (value, digits = 2) =>
+  value === null || value === undefined || Number.isNaN(value) ? "—" : Number(value).toFixed(digits);
+
+function applyHUD(snap) {
+  const pill = document.getElementById("status");
+  pill.textContent = snap.status;
+  pill.className = `pill ${snap.status}`;
+  document.getElementById("step").textContent = `step ${snap.step} / ${snap.max_steps}`;
+  document.getElementById("device").textContent = snap.stats.device;
+  document.getElementById("dataMode").textContent = snap.stats.data;
+  document.getElementById("uptime").textContent = `${Math.round(snap.uptime)} s`;
+  const st = snap.stats;
+  document.getElementById("vLoss").textContent = fmt(st.loss, 4);
+  document.getElementById("vPpl").textContent = fmt(st.ppl, 1);
+  document.getElementById("vPool").textContent = st.pool;
+  document.getElementById("vAlive").textContent = st.nodes;
+  document.getElementById("vEdges").textContent = st.edges;
+  document.getElementById("vBirths").textContent = st.births;
+  document.getElementById("vEdgeDeaths").textContent = st.edge_deaths;
+  document.getElementById("vNodeDeaths").textContent = st.node_deaths;
+  document.getElementById("vCemetery").textContent = st.cemetery;
+  document.getElementById("vLr").textContent = Number(st.lr).toExponential(1);
+
+  const error = document.getElementById("error");
+  if (snap.error) {
+    error.style.display = "block";
+    error.textContent = `thread : ${snap.error}`;
+  } else {
+    error.style.display = "none";
+  }
+
+  const log = document.getElementById("log");
+  log.innerHTML = "";
+  for (const event of snap.events.slice(-40).reverse()) {
+    const div = document.createElement("div");
+    div.className = `event ${event.kind || ""}`;
+    div.textContent = `[${event.step}] ${event.text}`;
+    log.appendChild(div);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* WebSocket                                                           */
+/* ------------------------------------------------------------------ */
+function connect() {
+  const socket = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
+  socket.onmessage = (message) => {
+    const snap = JSON.parse(message.data);
+    state.snapshot = snap;
+    applyHUD(snap);
+    applyGraph(snap);
+    updateCharts(snap.history);
+    flash(snap.trace);
+  };
+  socket.onclose = () => setTimeout(connect, 1200);
+  socket.onerror = () => socket.close();
+}
+
+/* ------------------------------------------------------------------ */
+/* Controls                                                            */
+/* ------------------------------------------------------------------ */
+async function post(url, body) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body || {}),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return response.json();
+}
+
+function bindControls() {
+  document.getElementById("btnStart").onclick = () => post("/control/start").catch(showError);
+  document.getElementById("btnPause").onclick = () => post("/control/pause").catch(showError);
+  document.getElementById("btnStop").onclick = () => post("/control/stop").catch(showError);
+
+  const temp = document.getElementById("temp");
+  const lr = document.getElementById("lr");
+  const l1 = document.getElementById("l1");
+  let timer = null;
+  const lrValue = (v) => 1e-5 * Math.pow(10, (Number(v) / 100) * 2.3); // 1e-5 .. ~2e-3
+  const l1Value = (v) => (Number(v) / 100) * 1e-3;
+  const send = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      document.getElementById("lblTemp").textContent = Number(temp.value).toFixed(2);
+      document.getElementById("lblLr").textContent = lrValue(lr.value).toExponential(1);
+      document.getElementById("lblL1").textContent = l1Value(l1.value).toExponential(1);
+      post("/hyperparams", {
+        temperature: Number(temp.value),
+        lr: lrValue(lr.value),
+        l1: l1Value(l1.value),
+      }).catch(showError);
+    }, 220);
+  };
+  [temp, lr, l1].forEach((slider) => slider.addEventListener("input", send));
+}
+
+function showError(error) {
+  const box = document.getElementById("error");
+  box.style.display = "block";
+  box.textContent = String(error.message || error);
+}
+
+/* ------------------------------------------------------------------ */
+/* Chat streaming, token by token                                      */
+/* ------------------------------------------------------------------ */
+function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+
+async function speak() {
+  if (state.chatRunning) return;
+  state.chatRunning = true;
+  const button = document.getElementById("chatSend");
+  button.disabled = true;
+  const prompt = document.getElementById("chatPrompt").value;
+  const log = document.getElementById("chatLog");
+  log.textContent = prompt;
+  document.getElementById("chatPath").textContent = "";
+  try {
+    const answer = await post("/chat", {
+      prompt,
+      max_new_tokens: 36,
+      temperature: Number(document.getElementById("temp").value),
+    });
+    for (const token of answer.tokens) {
+      log.textContent += token.text;
+      log.scrollTop = log.scrollHeight;
+      if (token.path && token.path.length > 1) {
+        document.getElementById("chatPath").textContent =
+          `trajet : ${token.path.join(" → ")}`;
+      }
+      flash(token.trace);
+      await sleep(85);
+    }
+  } catch (error) {
+    showError(error);
+  } finally {
+    state.chatRunning = false;
+    button.disabled = false;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Node file                                                           */
+/* ------------------------------------------------------------------ */
+async function showNode(id) {
+  try {
+    const info = await (await fetch(`/node/${id}`)).json();
+    const fiche = document.getElementById("fiche");
+    fiche.innerHTML =
+      `<b>nœud ${info.id}</b> ${info.alive ? "vivant" : "mort"}${info.io ? " · immortel" : ""}<br>` +
+      `gate <b>${info.gate}</b> · âge <b>${info.age}</b> steps · né au step ${info.born_step}<br>` +
+      `sortie moyenne ‖·‖ = ${info.mean_out_norm}<br>` +
+      `entrées ${info.incoming.length} · sorties ${info.outgoing.length}<br>` +
+      `parents : ${info.parents.length ? info.parents.slice(0, 12).join(", ") : "aucun"}<br>` +
+      `cimetière : ${info.in_cemetery ? "oui" : "non"}`;
+  } catch (error) {
+    showError(error);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+window.addEventListener("DOMContentLoaded", () => {
+  initNetwork();
+  initCharts();
+  bindControls();
+  document.getElementById("chatSend").onclick = speak;
+  document.getElementById("chatPrompt").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") speak();
+  });
+  connect();
+  window.addEventListener("resize", () => {
+    for (const key of Object.keys(state.charts)) {
+      const el = state.charts[key];
+      if (el) el.setSize({ width: Math.max(320, el.root.parentElement.clientWidth - 8), height: 118 });
+    }
+  });
+});
+</script>
+</body>
+</html>

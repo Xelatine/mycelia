@@ -1,0 +1,72 @@
+# Mycelia — all thresholds in one place.
+# Everything here can be loosened without touching the code: births, pruning,
+# penalties, capacities, and the training schedule.
+
+brain:
+  scale: 0                # 0 -> 512 nodes, 1 -> 302, 2 -> 3000, 3 -> 140 000
+  dim: 32                 # width of one node
+  max_hops: 8             # diffusion tours per token
+  dissipation: 0.9        # energy lost by a message at every tour
+  state_decay: 0.995      # membrane cooling per tour (~0.96 per token, ~20 tokens of memory)
+  max_edges: 20000        # fixed edge buffer capacity (never a dense matrix)
+  max_births: 8           # births allowed per forward pass
+  max_node_births: 2      # brand-new node slots allowed per forward pass
+  birth_k: 4              # candidate targets a node may test per hop
+  birth_candidates: 64    # sampled peers the router scores (never N x N)
+  init_bias: -8.0         # cold start: births are rare, they open if useful
+  edge_mask_init: 0.5     # a newborn synapse starts half-open
+  birth_strength: 0.5
+  weak_noise: 0.02        # newborn node weights: tiny noise, never exact zero
+  node_margin: 32         # ids beyond the population the router may address
+  node_birth_interval: 500  # forwards between two wished-for node slots
+  trace_limit: 2000       # edges kept per hop in the telemetry trace
+  edge_chunk_size: 512    # messages accumulated by chunks (D2): peak memory follows this
+
+lifecycle:
+  prune_every: 100
+  prune_ratio: 0.1        # a link dies under a tenth of the busiest decile's traffic
+  prune_fraction: 0.1     # never cut more than a tenth of the table in one pass
+  prune_threshold: 0.02   # absolute cut, only when a caller passes it explicitly
+  isolate_grace: 300      # steps of grace before isolation is fatal
+  newborn_grace: 300      # "orange" nodes: born less than this many steps ago
+  identity_weight: 0.01
+  identity_cosine: 0.999  # a node returning its input is taxed (F4)
+  redundancy_weight: 0.02
+  redundancy_cosine: 0.5
+  redundancy_sample: 64
+
+training:
+  toy_steps: 2000
+  toy_batch: 32
+  toy_seq: 10
+  text_steps: 10000
+  text_batch: 16
+  text_seq: 128
+  tbptt: 16               # truncated backprop: 16 tokens per block
+  lr: 0.001
+  text_lr: 0.0003
+  warmup: 1000
+  l1_weight: 0.0001
+  clip: 1.0
+  report_every: 100
+  text_report_every: 200
+  save_seconds: 600      # checkpoint toutes les 10 min d'horloge (C2), pas par pas
+  first_save_step: 10    # et un tout de suite, pour qu'un crash ne soit jamais total
+  val_fraction: 0.05
+  val_batch: 8
+  seed: 42
+
+growth:
+  check_every: 500
+  grow_threshold: 0.01    # > 1 % validation gain -> growth
+  optimize_threshold: 0.005  # < 0.5 % -> optimisation
+  reallocate: 256
+  suspend_births: 5000
+  node_freeze: 200        # gradient freeze after a node is born
+
+dashboard:
+  host: 127.0.0.1
+  port: 8080
+  snapshot_ms: 500
+  max_draw_nodes: 1500
+  events: 500

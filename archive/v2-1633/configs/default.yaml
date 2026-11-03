@@ -1,0 +1,59 @@
+# Mycelia — reference profile (scale 0, the one described in the project brief)
+# 512 nodes, dim 128, ~34 M parameters.  Needs a GPU (8 GB is enough) for a
+# useful run; on CPU it works but is slow.
+name: mycelia
+run_dir: runs/mycelia
+scale: 0
+
+model:
+  dim: 128
+  nodes_initial: 512
+  nodes_max: 1024
+  max_turns: 16
+  beam: 6
+  candidates: 6
+  fanout: 2
+
+train:
+  steps: 20000
+  batch_size: 8
+  ctx_len: 64
+  lr: 0.0003
+  warmup: 1000
+  clip: 1.0
+  bf16: true
+  grad_checkpoint: true
+  val_every: 250
+  val_batches: 8
+  checkpoint_every: 250
+  sample_every: 1000
+  log_every: 20
+  device: auto
+
+data:
+  corpus: auto
+  vocab_size: 10000
+  cache_dir: .cache
+  max_chars: 32000000
+
+life:
+  every: 100
+  link_usage_threshold: 0.02
+  node_grace_steps: 300
+  birth_threshold: 0.55
+  birth_every: 50
+  max_births_per_round: 8
+  min_live_edges: 1024
+  min_live_nodes: 128
+
+phase:
+  window: 500
+  growth_gain: 0.01
+  optimise_gain: 0.005
+  optimise_steps: 5000
+  realloc_nodes: 512
+  max_realloc: 8
+
+dashboard:
+  host: 127.0.0.1
+  port: 8080

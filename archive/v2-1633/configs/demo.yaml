@@ -1,0 +1,79 @@
+# Mycelia — demo profile
+# 512 nodes, dim 64, CPU-friendly.  This is the profile the documented 2000-step
+# acceptance run uses; it shows the brain wiring itself in a few hours on CPU
+# (or a few minutes on a GPU) and generates French-shaped text.
+name: mycelia-demo
+run_dir: runs/mycelia-demo
+scale: 0
+
+model:
+  dim: 48
+  nodes_initial: 512
+  nodes_max: 768
+  max_turns: 10
+  beam: 4
+  candidates: 5
+  fanout: 2
+  eps_energy: 0.001
+  init_energy: 4.0
+  gate_floor: 0.1
+  seed_edges_per_node: 4.0
+
+train:
+  steps: 2000
+  batch_size: 5
+  ctx_len: 28
+  lr: 0.0003
+  warmup: 100
+  clip: 1.0
+  tau_start: 1.0
+  tau_end: 0.1
+  tau_anneal_steps: 1200
+  val_every: 100
+  val_batches: 4
+  checkpoint_every: 100
+  sample_every: 250
+  log_every: 10
+  device: auto
+
+data:
+  corpus: auto
+  tokenizer: auto
+  vocab_size: 10000
+  cache_dir: .cache
+  max_chars: 4000000
+
+life:
+  enabled: true
+  every: 50
+  link_usage_threshold: 0.005
+  link_grace_steps: 100
+  node_grace_steps: 150
+  min_live_edges: 640
+  min_live_nodes: 96
+  birth_threshold: 0.55
+  birth_every: 25
+  max_births_per_round: 4
+  max_cut_fraction: 0.12
+
+loss:
+  l1_edges: 0.0001
+  routing_entropy: 0.05
+  anti_redundancy: 0.02
+  circulation: 0.05
+  growth: 0.01
+
+phase:
+  enabled: true
+  window: 100
+  growth_gain: 0.01
+  optimise_gain: 0.005
+  optimise_steps: 400
+  realloc_nodes: 64
+  max_realloc: 6
+
+dashboard:
+  host: 127.0.0.1
+  port: 8080
+  max_events: 4000
+  push_interval: 0.5
