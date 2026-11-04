@@ -3,8 +3,10 @@ data/train.parquet
 data/corpus_fr.txt
 data/tokenizer.json
 data/*.pt
+data/train.lock
 baseline_ppl.txt
 history.json
+.dash.pid
 
 # Runs and debug logs
 logs_*.txt
