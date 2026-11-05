@@ -1,0 +1,170 @@
+[
+  {
+    "step": 100,
+    "loss": 2.9086,
+    "ppl": 18.33,
+    "edges": 792,
+    "nodes": 514,
+    "pool": 532,
+    "edge_births": 780,
+    "node_births": 2
+  },
+  {
+    "step": 200,
+    "loss": 1.4417,
+    "ppl": 4.23,
+    "edges": 1541,
+    "nodes": 514,
+    "pool": 532,
+    "edge_births": 1547,
+    "node_births": 2
+  },
+  {
+    "step": 300,
+    "loss": 0.3724,
+    "ppl": 1.45,
+    "edges": 2207,
+    "nodes": 514,
+    "pool": 532,
+    "edge_births": 2314,
+    "node_births": 2
+  },
+  {
+    "step": 400,
+    "loss": 0.0771,
+    "ppl": 1.08,
+    "edges": 2760,
+    "nodes": 503,
+    "pool": 532,
+    "edge_births": 3088,
+    "node_births": 2
+  },
+  {
+    "step": 500,
+    "event": "hold",
+    "val_ppl": 1.01,
+    "pool": 532
+  },
+  {
+    "step": 500,
+    "loss": 0.0109,
+    "ppl": 1.01,
+    "edges": 3254,
+    "nodes": 511,
+    "pool": 532,
+    "edge_births": 3858,
+    "node_births": 2
+  },
+  {
+    "step": 600,
+    "loss": 0.0057,
+    "ppl": 1.01,
+    "edges": 3678,
+    "nodes": 515,
+    "pool": 555,
+    "edge_births": 4607,
+    "node_births": 4
+  },
+  {
+    "step": 700,
+    "loss": 0.0023,
+    "ppl": 1.0,
+    "edges": 4058,
+    "nodes": 515,
+    "pool": 555,
+    "edge_births": 5355,
+    "node_births": 4
+  },
+  {
+    "step": 800,
+    "loss": 0.0019,
+    "ppl": 1.0,
+    "edges": 4410,
+    "nodes": 515,
+    "pool": 555,
+    "edge_births": 6113,
+    "node_births": 4
+  },
+  {
+    "step": 900,
+    "loss": 0.0034,
+    "ppl": 1.0,
+    "edges": 4712,
+    "nodes": 514,
+    "pool": 555,
+    "edge_births": 6856,
+    "node_births": 4
+  },
+  {
+    "step": 1000,
+    "event": "hold",
+    "val_ppl": 1.001,
+    "pool": 555
+  },
+  {
+    "step": 1000,
+    "loss": 0.0007,
+    "ppl": 1.0,
+    "edges": 4986,
+    "nodes": 516,
+    "pool": 555,
+    "edge_births": 7601,
+    "node_births": 4
+  },
+  {
+    "step": 1100,
+    "loss": 0.0007,
+    "ppl": 1.0,
+    "edges": 5174,
+    "nodes": 518,
+    "pool": 587,
+    "edge_births": 8288,
+    "node_births": 6
+  },
+  {
+    "step": 1200,
+    "loss": 0.0005,
+    "ppl": 1.0,
+    "edges": 5369,
+    "nodes": 518,
+    "pool": 587,
+    "edge_births": 9000,
+    "node_births": 6
+  },
+  {
+    "step": 1300,
+    "loss": 0.0063,
+    "ppl": 1.01,
+    "edges": 5549,
+    "nodes": 518,
+    "pool": 587,
+    "edge_births": 9717,
+    "node_births": 6
+  },
+  {
+    "step": 1400,
+    "loss": 0.0008,
+    "ppl": 1.0,
+    "edges": 5715,
+    "nodes": 518,
+    "pool": 587,
+    "edge_births": 10438,
+    "node_births": 6
+  },
+  {
+    "step": 1500,
+    "event": "optimize",
+    "val_ppl": 1.001,
+    "pool": 587
+  },
+  {
+    "step": 1500,
+    "loss": 0.0004,
+    "ppl": 1.0,
+    "edges": 5839,
+    "nodes": 518,
+    "pool": 587,
+    "edge_births": 11134,
+    "node_births": 6
+  }
+]

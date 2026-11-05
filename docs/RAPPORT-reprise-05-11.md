@@ -226,6 +226,34 @@ tests. Le code n'a **pas** été modifié pendant cette session : seuls `.gitign
 
 ---
 
+## 9 bis. Addendum du 5 novembre, 21 h — le diagnostic qui corrige §3
+
+Le mécanisme de §3 était partiellement faux : la mémoire qui tue n'est **pas** la RAM hôte.
+Mesures de la session de diagnostic (`docs/DIAGNOSTIC-memoire-05-11.md`) :
+
+* **RAM résidente plate** : +26 Mo pour +2 334 arêtes sur 400 pas (1 690 → 1 716 Mo) ;
+  `gc.collect()` rend 0 Mo. Aucune fuite, aucune rétention d'objets Python.
+* **VRAM proportionnelle au câblage** : 380 Mo réservés à 400 arêtes, **2 892 Mo à 2 200**
+  (pas complet, batch 16, 10 positions) pour un modèle de ~5 Mo. Les structures (`edge_index`,
+  `_edge_mask`, `_edge_keys`, cimetière) pèsent moins de 1 Mo : tout est dans les activations
+  retenues pour le backward.
+* **Le commit qui monte** (~8,5 Mo/pas en moyenne, base CUDA incluse) est la conséquence du
+  cache CUDA et, au-delà de 8 Go, du débordement WDDM vers la RAM système — d'où la mort sans
+  traceback à 12 591 Mo.
+* **`tbptt 4` au lieu de 16** (toy) : VRAM 2 892 → **1 240 Mo**, pas 2 600 → **2 186 ms**.
+* **Débit réel** : 2,6 s/pas à 2 200 arêtes (toy), **22,1 s/pas** à 1 200 arêtes (texte, seq 128).
+  Le 0,283 s/pas de la v4 n'est pas reproductible et est retiré de la documentation.
+* ETA texte recalculée : **61 h au plancher**, plusieurs jours en extrapolant la croissance des
+  arêtes. Le run texte n'est pas lançable en l'état ; trois leviers chiffrés sont proposés dans
+  le diagnostic (§6).
+* **Critère (f) proposé** : `ram_mb` stable **et** `commit_mb` sans croissance monotone
+  inexpliquée — la RAM seule aurait validé un run en train de mourir.
+
+Relance du toy : `configs/config.yaml` passe à `toy_batch: 16`, run de zéro sur 2 000 pas lancé
+le 5 novembre à 21 h (`logs_toy_v5_2000_batch16.txt`) avec `ram_mb`/`commit_mb`/VRAM dans chaque
+ligne de signes vitaux. À la rédaction de cet addendum il était au pas 100 (RAM 1 673 Mo, VRAM
+1 386 Mo, commit 4 355 Mo, 2 941 ms/pas) ; son verdict n'est pas encore lisible.
+
 ## 10. Limites de ce rapport
 
 * La cause de la mort du run au pas 1502 est **supposée** (saturation mémoire) : le log ne contient
