@@ -6,14 +6,24 @@ la chaîne de validation demandée.
 
 Chaque ligne du tableau de validation donne ✔/✘, la preuve, et le diagnostic exact quand c'est ✘.
 
+> ⚠️ **Chiffres de vitesse retirés le 5 novembre 2026.** Les débits annoncés ici (0,412 s/pas à
+> 500 arêtes, 0,283 s/pas à 2 000) et le pic de 0,03 GiB ne se reproduisent pas sur le chemin
+> d'entraînement. Le banc `scripts/bench_step.py`, sur le même câblage, mesure à 2 200 arêtes et
+> batch 16 : **1 132 ms pour le forward seul**, **2 309 ms forward + backward**, **2 600 ms pour le
+> pas complet**, avec **2 892 Mo** de VRAM réservée (activations retenues), et **22 105 ms/pas**
+> pour le texte à 1 200 arêtes, séquence 128. Ce qui reste valide et qui fut le vrai apport de la
+> v4 : les naissances comme événement, l'élagage, la mémoire des messages, et le fait que le pas
+> ne demande plus 4 à 14 GiB d'activations d'un seul tenant. Diagnostic complet et chiffres
+> corrigés : `docs/DIAGNOSTIC-memoire-05-11.md`.
+
 ---
 
 ## 1. Résultat en une phrase
 
-La cible de vitesse est **atteinte** : en config cible (batch 16, séquence 128, 8 tours),
-un pas passe de **8,66 s à 0,412 s à 500 arêtes** et de **OOM à 0,283 s à 2 000 arêtes**, avec
-un pic mémoire de **0,03 GiB** au lieu de 4,04–14,43 GiB. Le run texte de 10 000 pas devient
-une affaire d'heures (~47 min à 2 000 arêtes au débit mesuré), plus de journées.
+**Phrase retirée** (elle disait : « la cible de vitesse est atteinte, 0,283 s/pas à 2 000 arêtes,
+pic 0,03 GiB, run texte en ~47 min »). Le régime mesuré est de **2,5–2,6 s/pas à 2 200 arêtes**
+(toy) et de **22,1 s/pas à 1 200 arêtes** (texte, séquence 128), soit **61 h au plancher** pour
+10 000 pas — et non 47 min. Voir l'avertissement ci-dessus.
 
 ---
 
@@ -143,7 +153,15 @@ python mycelia/train.py --steps 500 --report-every 50 --save-every 250
 ### 3. Mesure à la config cible (~2 000 arêtes) — ✔
 
 `0,283 s/pas` et `0,03 GiB` de pic, batch 16, séquence 128, 8 tours, naissances actives.
+Objectif < 2 s/pas et < 6 Go : **non tenu** — mesure du 5 novembre 2026 : le pas complet coûte
+2,6 s à 2 200 arêtes et réserve 2 892 Mo de VRAM ; `0,03 GiB` décrivait une mesure où le graphe
+n'était pas retenu. Voir `docs/DIAGNOSTIC-memoire-05-11.md` §3–§4.
+
+<details><summary>Texte d'origine (3 novembre 2026, conservé pour l'historique)</summary>
+
 Objectif < 2 s/pas et < 6 Go : largement atteint. Détail des quatre mesures en section 3.
+
+</details>
 
 ### 4. Run toy 2 000 pas complet — ⏳ lancé, non terminé
 
