@@ -1,203 +1,240 @@
-# Mycelia — rapport de reprise du 5 novembre
+# Mycelia — rapport du 5 novembre 2026
 
-Date : 5 novembre 2026, 00 h 35 (heure locale) — état arrêté au pas 700 du run toy.
+Date de rédaction : 5 novembre 2026, 20 h 25 (heure locale).
 Périmètre : `C:\Users\alexw\Documents\mycelia`, reprise après l'incident de suppression.
-Machine : RTX 3070 Laptop, torch 2.11.0+cu128, Python 3.12.10.
+Machine : RTX 3070 Laptop, 31,2 Go de RAM (limite de commit 32,2–35,2 Go), torch 2.11.0+cu128,
+Python 3.12.10, disque 21 Go libres.
 
-Ce rapport ne rapporte que ce qui a été **mesuré ou constaté dans ce dossier**. Les cases non
-vérifiées le disent explicitement. Il remplace, pour cette session, le `RAPPORT-COMPLET.md`
-annoncé dans la consigne de reprise : ce fichier **n'existe pas** ici (voir §7).
-
----
-
-## 1. Résultat en une phrase
-
-Le dossier restauré contient **déjà la v4 finale** : format 3, 41 tests verts, C1–C8 et D1–D4
-présents et vérifiés, dépôt git en place, données intactes. Aucune réapplication n'a donc été
-faite ; le run toy 2 000 pas a été lancé et a atteint le pas 700 (perte 0,0023), mais il ralentit
-nettement et sature la mémoire de la machine (§6). Ce ralentissement est **reproductible** : le run
-v4 précédent montre la même falaise. Le run texte n'a donc pas été lancé.
+Ce rapport ne rapporte que ce qui a été **mesuré ou constaté dans ce dossier**. Trois étiquettes
+sont utilisées quand la preuve manque : **(mesuré)**, **(estimé)**, **(supposé)**.
+Il remplace le `RAPPORT-COMPLET.md` annoncé dans la consigne de reprise : ce fichier **n'existe
+pas** ici (recherche par nom et par contenu dans tout le dossier hors `.git`, aucune occurrence).
 
 ---
 
-## 2. Prémisse de la consigne et réalité du dossier
+## 1. Verdict en une phrase
 
-La consigne décrivait « un snapshot antérieur (format 1, 28 tests, sans verrou, sans chunking,
-sans slots morts) ». Le constat est l'inverse :
+**La validation s'arrête au jouet : le run toy n'a pas fini — il est mort au pas 1502 sur 2 000,
+sans traceback ni sortie propre — et ses critères (d) vitesse et (e) fin propre échouent.** Conformément
+à la règle de la consigne (« si un critère échoue : STOP, diagnostic exact avec preuve »), le run
+texte 10 000 pas et la baseline Transformer n'ont **pas** été lancés, et le Palier 1 n'est **pas**
+évalué. Ce qui est acquis : 41 tests verts, un dépôt git propre, et un diagnostic causal du
+ralentissement (`toy_batch: 32` → saturation mémoire → OOM → batch 16).
 
-| Point annoncé | Constat mesuré | Preuve |
+| Critère du toy | Verdict | Mesure |
 |---|---|---|
-| format 1 | **format 3** (`READABLE_VERSIONS = (2, 3)`) | `mycelia/checkpoint.py:35-36` |
-| 28 tests | **41 tests** (8+4+6+11+7+5) | `pytest -q` → 41 passed |
-| sans verrou | `pid_alive`, `acquire_lock`, `release_lock`, et verrou réellement exercé | `mycelia/train.py:81,113,137` |
-| sans chunking | `edge_chunk_size: 512` + tests d'équivalence et de mémoire | `brain.py:632`, `configs/config.yaml:23` |
-| sans slots morts | allocation en réserve morte (`torch.zeros` puis `alive[:old_n]`) | `brain.py:360-361` |
-
-Aucun `FORMAT_VERSION = 1` n'existe dans le dossier (recherche sur tout le code hors `archive/`).
-Les anciennes générations présentes sont `archive/prototype`, `archive/prototype-legacy`,
-`archive/v2`, `archive/v2-1633`.
-
-**Conséquence :** réappliquer C1–C8 puis D1–D4 sur ce code aurait dupliqué des correctifs
-existants et créé des commits annonçant un travail non effectué. La réapplication a donc été
-remplacée par une **vérification bloc par bloc**, conformément à l'esprit de la consigne
-(« pas en aveugle »).
+| (a) perte qui baisse nettement | **✔** | 2,9086 → 0,3724 entre les pas 100 et 300 (facteur 7,8) |
+| (b) `arêtes_nées` ≠ `nœuds_nés` | **✔** | 11 134 arêtes nées vs 6 vrais nœuds nés au pas 1500 |
+| (c) nœuds vivants < pool | **✔** | 518 vivants pour un pool de 587 au pas 1500 |
+| (d) ms/pas en régime < 2 000 | **✗** | 2 018 → 3 774 ms/pas après le pas 762 ; jamais durablement sous 2 000 |
+| (e) fin propre `0 -> 2 -> 1`, verrou relâché, `genome.pt` écrit | **✗** | mort au pas 1502, `data/train.lock` toujours présent avec le PID 15108 (mort) ; `genome.pt` écrit mais au pas 1502 |
 
 ---
 
-## 3. Vérification C1–C8
+## 2. Chronologie mesurée du run
 
-| Bloc | Attendu | Constat | Preuve |
-|---|---|---|---|
-| C1 | verrou anti-double-lancement | présent et **exercé en réel** : verrou périmé PID 8848 détecté puis remplacé par PID 15108 | `train.py:81,113,137` ; log `logs_toy_v4_2000_rerun.txt` |
-| C2 | sauvegarde horloge + historique atomique | `save_seconds: 600`, `first_save_step: 10`, écriture `tmp` + `os.replace` | `train.py:161,296-297` ; `config.yaml:53-54` |
-| C3 | slots alloués nés morts | `grow_population` crée `torch.zeros(new_n, bool)` et recopie seulement les vivants | `brain.py:360-367` |
-| C4 | performance / pas de `torch.isin` chaud | chunking par arêtes, appartenance host-side `_edge_keys` | `brain.py:632` ; tests `test_chunking_*`, `test_scaling_edges` |
-| C5 | compteurs distincts | `edge_births` = arêtes nées, `node_births` = vraies naissances, dans métriques, logs et `history.json` | `train.py:402-403` |
-| C6 | croissance transparente | messages `phase CROISSANCE`, `phase OPTIMISATION`, `PALIER` | `growth.py:147,154,159` |
-| C7 | honnêteté documentaire | `docs/RAPPORT-v3.md` et `docs/RAPPORT-v4.md` distinguent mesuré / non mesuré | fichiers présents |
-| C8 | décodage propre à l'affichage | `clean_text` utilisé par `generate.py` et le chat du cockpit, jamais dans le modèle | `data.py:35`, `generate.py:81,89`, `runner.py:366` |
+Commande : `python mycelia/train.py --steps 2000 --report-every 100` (processus PID 15108).
+Log : `logs_toy_v4_2000_rerun.txt`, 50 lignes, dernier caractère écrit à 02:02.
+Configuration effective : `toy_batch: 32` (`configs/config.yaml:40`), réduite à 16 en cours de run.
 
----
-
-## 4. Vérification D1–D4
-
-| Bloc | Attendu | Constat | Preuve |
-|---|---|---|---|
-| D1.1 | décision de naissance hors gradient | `_birth_edges` décoré `@torch.no_grad()` ; `test_birth_no_grad` espionne `_gumbel_like` et vérifie `torch.is_grad_enabled() is False` | `brain.py:430-431` ; `tests/test_growth.py:195-201` |
-| D1.2 | une seule passe de naissance par forward | compteur `birth_passes`, masque `emitted`, commentaire D1.2 dans le forward | `brain.py:539,674-687` ; `test_birth_once_per_forward` |
-| D1.3 | candidats échantillonnés et bornés | `birth_candidates: 64` ; coût indépendant de N | `test_birth_candidates_bounded` |
-| D2 | chunking des messages | `edge_chunk_size: 512`, équivalence à `atol=1e-6` (jamais `torch.equal`) | `brain.py:632` ; `test_chunking_equivalence`, `test_chunking_memory` |
-| D4 | invariants de checkpoint | `test_resume_continuity` compare 50 pertes à **1e-6** ; verrou, horloge et `history.json` incrémental/atomique intacts | `tests/test_checkpoint.py:97` |
-
-Vérification globale : `python -m pytest tests -q` → **41 passed, 1 warning, 57,62 s, exit 0**.
-Le warning est une dépréciation Starlette/httpx (`fastapi.testclient`), sans effet sur les tests.
-
----
-
-## 5. Portes du plan de reprise
-
-| Porte | État | Preuve |
-|---|---|---|
-| 1. git init + `.gitignore` + commit initial | **déjà fait** : 2 commits, 129 fichiers suivis, arbre de travail propre | `db1ab80` (initial), `a1413ee` (tests) |
-| 2. C1–C8 réappliqués un par un | **sans objet** : déjà présents, vérifiés §3 | — |
-| 3. D1–D4 réappliqués un par un | **sans objet** : déjà présents, vérifiés §4 | — |
-| 4. 41 tests verts, continuité à 1e-6 | **franchi** : 41 passed | sortie pytest |
-| 5. corpus + tokenizer disponibles | **franchi, sans reconstruction** : 24,0 M caractères, 29 402 lignes, vocab 10 000, `eos = 3`, aller-retour correct | `data/corpus_fr.txt`, `data/tokenizer.json` |
-| 6. ZIP horodaté avant tout run long | **franchi** : `mycelia-v4-2026-11-04.zip`, 39 fichiers, 116 Ko, hashes identiques au disque | comparaison SHA-256 |
-| 7. run toy 2 000 puis texte 10 000 | **toy lancé**, texte non lancé (conditionné à la lecture des critères du toy) | §6 |
-
-Détail ZIP : l'archive `mycelia-v4.zip` d'origine est elle aussi identique au disque
-(25 entrées de code/configuration/README comparées, 0 différence). Le nouveau ZIP horodaté
-ajoute `docs/` complet, y compris les rapports.
-
----
-
-## 6. Run toy 2 000 pas
-
-Commande : `python mycelia/train.py --steps 2000 --report-every 100`
-Log : `logs_toy_v4_2000_rerun.txt` — processus d'entraînement PID 15108 (vivant au dernier relevé).
-
-| Pas | Perte | ppl | Arêtes | Nœuds | arêtes_nées | nœuds_nés | ms/pas (moy. 20) |
+| Pas | Perte | ppl | Arêtes | Nœuds vivants | arêtes_nées | nœuds_nés | ms/pas (moy. 20) |
 |---|---|---|---|---|---|---|---|
 | 100 | 2,9086 | 18,3 | 792 | 514 | 780 | 2 | 921 |
 | 200 | 1,4417 | 4,2 | 1 541 | 514 | 1 547 | 2 | 1 017 |
-| 300 | 0,3724 | 1,45 | 2 207 | 514 | 2 314 | 2 | 1 248 |
-| 400 | 0,0771 | 1,08 | 2 760 | 503 | 3 088 | 2 | 1 471 |
-| 700 | 0,0023 | 1,00 | 4 058 | 515 | 5 355 | 4 | 4 611 |
+| 300 | 0,3724 | 1,5 | 2 207 | 514 | 2 314 | 2 | 1 248 |
+| 400 | 0,0771 | 1,1 | 2 760 | 503 | 3 088 | 2 | 1 471 |
+| 500 | 0,0109 | 1,0 | 3 254 | 511 | 3 858 | 2 | 3 288 |
+| 600 | 0,0057 | 1,0 | 3 678 | 515 | 4 607 | 4 | 3 936 |
+| 700 | 0,0023 | 1,0 | 4 058 | 515 | 5 355 | 4 | 4 611 |
+| 800 | 0,0019 | 1,0 | 4 410 | 515 | 6 113 | 4 | 2 018 |
+| 900 | 0,0034 | 1,0 | 4 712 | 514 | 6 856 | 4 | 2 071 |
+| 1 000 | 0,0007 | 1,0 | 4 986 | 516 | 7 601 | 4 | 2 157 |
+| 1 100 | 0,0007 | 1,0 | 5 174 | 518 | 8 288 | 6 | 2 181 |
+| 1 200 | 0,0005 | 1,0 | 5 369 | 518 | 9 000 | 6 | 2 496 |
+| 1 300 | 0,0063 | 1,0 | 5 549 | 518 | 9 717 | 6 | 2 266 |
+| 1 400 | 0,0008 | 1,0 | 5 715 | 518 | 10 438 | 6 | 2 336 |
+| 1 500 | 0,0004 | 1,0 | 5 839 | 518 | 11 134 | 6 | 3 774 |
 
-Autres constats du log :
+Événements du log, dans l'ordre :
 
-* verrou périmé PID 8848 détecté et remplacé (C1) ;
-* `pool 512 → 532` pour **2 vraies naissances**, compteurs distincts (C3, C5) ;
-* élagage : 18 arêtes au pas 100, 101 au pas 200, 221 au pas 300, 276 au pas 400 ;
-  **51 nœuds enterrés** au pas 300 (grâce d'isolement écoulée), 8 de plus au pas 400 ;
-* cimetière à 11 au pas 400 pour 51 enterrements cumulés : **40 nœuds ont été rappelés par un
-  message** (F3) — ce n'est pas une perte, c'est la résurrection en action ;
-* mémoire GPU observée : ~6,5 GiB, utilisation ~31 % au voisinage du pas 100 ;
-* `history.json` : 8 entrées à la rédaction (100, 200, 300, 400, 500 + `hold`, 500, 600, 700) ;
-* **falaise de performance, reproductible** : dans ce run, 1 799 → 4 611 ms/pas entre 2 863 et
-  4 058 arêtes ; dans le run v4 précédent (`logs_toy_v4.txt`), 1 799 → 4 678 ms/pas entre 2 863 et
-  3 247 arêtes. Même marche de ×2,6 au même voisinage (~3 200 arêtes, pas ~500) : ce n'est pas un
-  accident de cette session. Cause non isolée ; deux facteurs coïncident — la croissance du
-  câblage et la saturation mémoire ci-dessous — et un micro-run profilé est nécessaire pour
-  trancher ;
-* **saturation mémoire machine** : le processus engage 12 591 Mo de mémoire validée (WS 3 571 Mo)
-  pour une limite de commit de 35,2 Go, dont il ne reste que 0,0–0,2 Go. Conséquences mesurées :
-  `import torch` échoue (WinError 1455), `fork` de Git Bash échoue, PowerShell ne démarre plus son
-  CLR. Toute vérification qui importe torch, pytest compris, est impossible tant que le run vit.
+* verrou périmé PID 8848 détecté et remplacé par PID 15108 (C1 exercé en réel) ;
+* pas 500 : référence de validation posée (`val = 1,0`), première décision de croissance reportée
+  au pas 1 000 ;
+* pas 500 et 1 000 : `optimiseur reconstruit après croissance (6 tenseurs re-attachés)` ;
+* pas 500 : `pool 512 → 532` pour **2 vraies naissances** ; pas 1 000 : `pool 555 → 587` pour
+  2 de plus (compteurs distincts, C3/C5) ;
+* pas 762 : **`OOM: batch réduit à 16 (le graphe reste creux)`** ;
+* pas 1 500 : **`phase OPTIMISATION`** (`val = 1,0`), naissances suspendues — `nœuds_nés` reste
+  figé à 6 ensuite ;
+* dernier événement : `checkpoint (horloge) à step 1502, 7240 s de run`, puis plus rien.
 
-**Nuance de lecture :** la ligne de signes vitaux est construite **avant** le cycle de vie du
-même pas. Les colonnes `morts-arêtes` / `morts-nœuds` / `cimetière` ont donc un pas de retard :
-au pas 300, la ligne affiche `morts-arêtes 119` et `cimetière 0`, alors que le cycle de vie
-vient de couper 221 arêtes et d'enterrer 51 nœuds. Ce n'est pas une incohérence de mesure,
-c'est l'ordre d'exécution (`metrics` puis `apply_lifecycle`).
+**Nuance de lecture :** la ligne de signes vitaux est construite **avant** le cycle de vie du même
+pas. `morts-arêtes`, `morts-nœuds` et `cimetière` ont donc un pas de retard. Au pas 300, la ligne
+affiche `morts-arêtes 119` et `cimetière 0` alors que le cycle vient de couper 221 arêtes et
+d'enterrer 51 nœuds. Ce n'est pas une incohérence, c'est l'ordre d'exécution.
 
-### Critères de verdict (étape 4 de la validation précédente)
+**Convergence :** perte 0,0004 et ppl 1,0 au pas 1 500 signifient que le jouet est **convergé**,
+pas que le modèle a appris quoi que ce soit d'utile. Le corpus toy est un jouet de câblage ;
+aucune conclusion scientifique ne se tire de ppl ≈ 1,0.
 
-| Critère | État | Commentaire |
+---
+
+## 3. Pourquoi le run ralentit, puis pourquoi il est mort
+
+### 3.1 Falaise de vitesse — cause identifiée (mesuré)
+
+`toy_batch: 32` porte la mémoire validée du processus à **12 591 Mo** (WS 3 571 Mo) pour une limite
+de commit de 35,2 Go, dont il ne restait que **0,0–0,2 Go**. Conséquences mesurées sur la machine :
+`import torch` échoue en `OSError: [WinError 1455] Le fichier de pagination est insuffisant…
+cublas64_12.dll`, `fork` de Git Bash échoue (`Resource temporarily unavailable`), PowerShell ne
+démarre plus son CLR (`HRESULT 80004005`), `wmic`/`Get-CimInstance` inutilisables.
+
+Sous cette pression, les ms/pas montent de 1 471 (pas 400) à 4 611 (pas 700, soit ×3,1). Au pas
+762, l'OOM fait tomber le batch à 16 : le processus retombe à **812 Mo de WS** et le débit revient
+à 2 018 ms/pas. Le run v4 précédent (`logs_toy_v4.txt`) montre la même marche (1 799 → 4 678 ms/pas
+vers 3 247 arêtes) : le mécanisme est **reproductible**.
+
+**Réserve de comparabilité, à ne pas oublier :** les pas 100–700 tournent en batch 32, les pas 800+
+en batch 16. Les pertes des deux segments ne se comparent pas directement (la variance par pas
+augmente visiblement en batch 16 : 0,0063 au pas 1 300 entre 0,0005 et 0,0008).
+
+### 3.2 Mort du run au pas 1502 (constaté ; cause supposée)
+
+Constats : le PID 15108 n'existe plus ; le log s'arrête net après le checkpoint d'horloge du pas
+1502, **sans traceback, sans ligne de fin, sans message d'interruption** ; `data/train.lock`
+contient encore `15108` ; `data/genome.pt` et `data/genome_latest.pt` datent de 02:02 (45 934 037
+octets), soit exactement l'heure du dernier checkpoint.
+
+Le run n'a donc pas été interrompu par une exception Python (rien dans le log) : il a été **tué de
+l'extérieur**. Cause la plus probable **(supposé, non prouvé)** : la même saturation de mémoire
+que §3.1 — la vitesse remonte à 3 774 ms/pas au pas 1 500, signe d'une seconde montée de pression,
+et Windows termine un processus sans traceback quand le commit est épuisé. Un arrêt manuel ou un
+kill par l'utilisateur n'est pas exclu ; le log ne permet pas de trancher.
+
+**Ce que cela coûte :** 1 502 pas sur 2 000 (75 %), 7 240 s (2 h 01) de calcul, et le critère (e)
+manqué pour la seule raison qui compte — il n'y a pas eu de sortie propre.
+
+---
+
+## 4. Ce que le toy démontre quand même
+
+Ces points sont mesurés dans le log et restent valables indépendamment de la mort du run :
+
+* **Compteurs distincts (C5)** : 11 134 arêtes nées pour 6 vrais nœuds nés au pas 1 500. Un compteur
+  unique aurait annoncé 11 134 « nœuds » ; le code ne le fait pas.
+* **Slots morts (C3)** : 518 nœuds vivants pour un pool de 587 au pas 1 500 — l'écart est réel et
+  persistant, pas un artefact d'affichage.
+* **Cycle de vie complet, dans les deux sens** : 51 nœuds enterrés au pas 300 (grâce d'isolement
+  écoulée) avec un cimetière à 11 au pas 400, donc **40 nœuds rappelés par un message** (F3). Ce
+  n'est pas une perte, c'est la résurrection en action.
+* **Élagage continu** : 368 → 584 arêtes coupées par tranche de 100 pas entre les pas 600 et 1 400.
+* **Fin des enterrements** : `morts-nœuds` reste figé à 68 des pas 900 à 1 500, cimetière à 0 : une
+  fois le graphe saturé et toutes les naissances suspendues, plus aucun nœud n'est isolé.
+* **Croissance bornée par la phase** : deux poussées de 20 puis 32 slots, puis `phase OPTIMISATION`
+  au pas 1 500 qui gèle les naissances. La boucle croissance/optimisation fonctionne.
+
+---
+
+## 5. Ce qui n'a pas été lancé, et pourquoi
+
+| Élément | État | Raison |
 |---|---|---|
-| Perte qui baisse nettement | ✔ | 2,91 → 0,37 entre les pas 100 et 300 |
-| `arêtes_nées` / `nœuds_nés` distincts | ✔ | 2 314 arêtes vs 2 naissances |
-| Slots morts (`nœuds` ≠ `pool`) | ✔ | 514 vivants pour un pool de 532 |
-| ms/pas en régime (< 2 000) | ✗ | 0,92 → 4,61 s ; falaise reproduite par le run v4, donc pas imputable au seul environnement, mais la saturation mémoire empêche d'en isoler la cause |
-| Fin propre (`0 -> 2 -> 1`, verrou relâché, génome écrit) | ⏳ | run en cours (pas 700) |
+| Run texte 10 000 pas | **non lancé** | critère (d) échoué ; de plus l'ETA réelle est d'un autre ordre que prévu (§5.1) |
+| Run texte — échantillons 40 tokens aux pas 200/1 000/3 000/5 000/10 000 | **non collectés** | dépend du run texte |
+| `docs/echantillons-texte.md` | **non écrit** | idem |
+| Baseline Transformer 10 000 pas | **non lancée** | STOP ; et `baseline_ppl.txt` reste absent |
+| `docs/BILAN-run-texte.md` | **non écrit** | aucun chiffre de run texte ni de baseline à comparer ; l'écrire aurait été de la fiction |
+| Verdict Palier 1 | **non évalué** | dépend du run texte et de la baseline |
+| Table 3 seeds | **non remplie** | dépend des deux runs |
+
+### 5.1 ETA : l'hypothèse de 47 min ne tient pas (estimé)
+
+Le plan tablait sur 0,283 s/pas. Sur cette machine et cette configuration, le run toy mesure
+**1,25 s/pas à 2 207 arêtes** et **2,34 s/pas à 5 715 arêtes** : le facteur d'écart avec 0,283 s/pas
+est de 4 à 8. Les arêtes croissent d'environ 5,7 par pas ; à 10 000 pas le graphe atteindrait
+~56 000 arêtes. En supposant un coût par pas à peu près proportionnel au nombre d'arêtes (hypothèse
+grossière, non mesurée au-delà de 5 839 arêtes), le run texte coûterait **de l'ordre de plusieurs
+dizaines d'heures**, pas une heure. Cette estimation est un ordre de grandeur, pas une prévision :
+elle doit être remesurée avant tout lancement.
 
 ---
 
-## 7. Écarts constatés et décisions non prises
+## 6. Git et livraison
 
-1. **`docs/RAPPORT-COMPLET.md` absent.** Recherche par nom de fichier et par contenu dans tout
-   le dossier (hors `.git`) : aucune occurrence. Les registres disponibles sont
-   `docs/RAPPORT-v3.md` et `docs/RAPPORT-v4.md` ; la vérification s'appuie sur eux et sur le code.
-2. **Hygiène git — corrigé pendant cette session.** `data/train.lock` et `.dash.pid` étaient
-   suivis ; ils sont désormais ignorés et retirés de l'index (`git rm --cached`), commit
-   `558c038` « gitignore: runtime locks (verrous d'exécution, pas de contenu) ».
-3. **ZIP horodaté — corrigé.** `mycelia-v4-2026-11-04.zip` est maintenant suivi (commit
-   `d0d0957` « archive: ZIP horodaté post-reprise »), comme les ZIP v3/v4 précédents. Il précède
-   les commits de documentation de cette session.
-4. **Aucun commit de réapplication n'a été créé.** Les commits « C1-C2 », « C3 », etc. demandés
-   par le plan n'auraient correspondance avec aucune modification réelle.
+| Commit | Contenu |
+|---|---|
+| `db1ab80` | commit initial (129 fichiers suivis) |
+| `a1413ee` | tests |
+| `558c038` | `.gitignore` + `git rm --cached data/train.lock .dash.pid` — « gitignore: runtime locks (verrous d'exécution, pas de contenu) » |
+| `d0d0957` | « archive: ZIP horodaté post-reprise » (`mycelia-v4-2026-11-04.zip`) |
+| `47458c8` | « docs: rapport de reprise du 5 novembre… » (première version du présent fichier) |
 
----
-
-## 8. Ce qui n'est pas fait
-
-* **Run texte 10 000 pas : non lancé, volontairement.** Le critère (d) « ms/pas en régime
-  < 2 000 » échoue de façon reproductible (§6) ; la règle du plan est alors STOP et diagnostic,
-  pas lancement. À 4,6 s/pas, il coûterait ~13 h et saturerait la machine.
-* **Baseline Transformer : non lancée** pour la même raison (mémoire de validation épuisée).
-* **Verdict final du toy : non conclu.** Le run était au pas 700 à la rédaction, 1 300 pas
-  restants à ~4,6 s/pas, soit ~100 min ; je ne suis pas notifié de sa fin.
-* **Cause de la falaise : non isolée.** À instruire en priorité, sur machine au repos.
-* **Baseline Transformer : non mesurée.** `baseline_ppl.txt` absent.
-* **Table 3 seeds : non remplie.**
+`.gitignore` couvre désormais `data/train.lock`, `data/*.pt`, `baseline_ppl.txt`, `history.json`,
+`.dash.pid`, `logs_*.txt`. Aucun autre nettoyage n'a été fait : la consigne l'interdit sans accord
+explicite. La version finale de ce rapport et le ZIP du 5 novembre sont livrés dans des commits
+séparés (voir `git log`).
 
 ---
 
-## 9. Commandes utiles
+## 7. Contrôles finaux
 
-```bash
-python -m pytest tests -q                                  # 41 tests
-tail -40 logs_toy_v4_2000_rerun.txt                        # suivi du toy
-python -c "import json; print(json.load(open('history.json'))[-5:])"
-python mycelia/train.py --data text --scale 0              # run texte 10 000 pas, après le toy
-python scripts/train_baseline.py --steps 10000             # baseline Transformer
-```
+| Contrôle | Résultat | Preuve |
+|---|---|---|
+| `python -m pytest tests -q` | **41 passed, 1 warning, 73,46 s, exit 0** | exécuté après la fin du run, mémoire libérée (RAM 17,5/31,2 Go, commit 15,7/32,2 Go) |
+| Continuité de reprise à 1e-6 | **verte** | `tests/test_checkpoint.py:97`, `test_resume_continuity` |
+| Arbre git | **propre** après commit du rapport et du ZIP | `git status --porcelain` |
+| Run toy documenté | **oui**, avec sa mort et ses chiffres | `logs_toy_v4_2000_rerun.txt`, `history.json` (16 entrées jusqu'au pas 1 500) |
+| Bilan écrit | **oui** (ce rapport, avec verdict négatif assumé) | ce fichier |
+| Verrou relâché | **non** | `data/train.lock` = `15108`, processus mort |
 
-Le run toy écrit `data/genome.pt` et `data/genome_latest.pt` toutes les 10 minutes d'horloge,
-et `history.json` à chaque rapport. Le verrou `data/train.lock` est retiré proprement en fin de
-run ; s'il subsiste, son PID est vérifié avant tout nouveau lancement.
+Le warning pytest est une dépréciation Starlette/httpx (`fastapi.testclient`), sans effet sur les
+tests. Le code n'a **pas** été modifié pendant cette session : seuls `.gitignore`, l'index git et
+`docs/` ont changé, donc les 41 tests valident exactement ce qui est livré.
 
 ---
 
-## 10. Conclusion
+## 8. État sur disque et reprise possible
 
-La reprise est **techniquement terminée avant d'avoir commencé** : le code restauré est la v4
-finale, les 41 tests passent, les corrections C1–C8 et D1–D4 sont en place et vérifiées, les
-données sont intactes et le ZIP horodaté existe. Le seul travail neuf de cette session est la
-vérification bloc par bloc et le lancement du run toy 2 000 pas, dont les premiers relevés
-confirment le comportement attendu (perte 2,91 → 0,08, naissances, enterrements et résurrections visibles,
-compteurs distincts, verrou opérationnel).
+* `data/genome.pt` / `data/genome_latest.pt` : 45 934 037 octets, écrits le 5 novembre à 02:02,
+  soit le checkpoint d'horloge du **pas 1502** — pas le génome final des 2 000 pas.
+* `history.json` : entrées jusqu'au pas 1 500, dont l'événement `optimize` et les métriques du pas.
+  Pas d'entrée de fin.
+* `data/train.lock` : contient `15108`, processus inexistant. **Verrou périmé.** Il n'a pas été
+  supprimé (règle : ne rien nettoyer sans accord).
+* Reprise : `python mycelia/train.py --resume` est le chemin prévu ; `acquire_lock` vérifie
+  `pid_alive` avant de refuser (`mycelia/train.py:127`, `pid_alive` via `OpenProcess`, jamais
+  `os.kill(pid, 0)`), donc un verrou périmé est remplacé automatiquement. Il reste **498 pas** à
+  parcourir (~19 à 32 min au débit mesuré, estimé), **mais** la reprise recharge `toy_batch: 32` :
+  sans changement de configuration, le run repartira dans la même saturation et mourra de la même
+  façon. C'est le point à trancher avant de relancer.
 
-Le prochain jalon reste la **validation longue** : finir le toy, lire ses cinq critères, puis
-lancer le texte 10 000 pas et la baseline.
+---
+
+## 9. Prochaine action recommandée
+
+1. **Baisser `toy_batch` de 32 à 16 dans `configs/config.yaml`** (une valeur de configuration, pas
+   du code) — c'est la seule variable identifiée qui explique la saturation, et le run a déjà
+   tourné 700 pas à 16 sans incident.
+2. **Reprendre le toy** avec `--resume` (le verrou périmé sera remplacé) ou, si l'on veut une courbe
+   homogène en batch 16 de bout en bout, le relancer sur 2 000 pas (~40 à 75 min estimés au débit
+   mesuré). Le second choix coûte 2 h de calcul mais donne un critère (d) interprétable, ce que le
+   run actuel ne permet pas.
+3. **Ne lancer le texte qu'après** un toy fini proprement : l'ETA doit être remesurée sur les
+   premiers 500 pas réels, pas déduite du chiffre de 0,283 s/pas.
+4. Faire tourner la baseline Transformer **en parallèle du texte**, jamais pendant le toy, pour ne
+   pas rejouer la saturation mémoire.
+
+---
+
+## 10. Limites de ce rapport
+
+* La cause de la mort du run au pas 1502 est **supposée** (saturation mémoire) : le log ne contient
+  aucun traceback et le code de sortie du processus n'a pas été capturé. Le point est signalé comme
+  tel, pas comme un fait.
+* Le critère (d) est mesuré sur un run dont le batch a changé en cours de route : il est **manqué**
+  au sens de la consigne, mais il n'est pas démontré que la configuration cible (texte, batch 16)
+  échouerait, elle aussi.
+* L'ETA du run texte est une **extrapolation** à partir de 5 839 arêtes ; elle n'a aucune valeur de
+  mesure.
+* Rien n'est dit ici sur la qualité linguistique du modèle : aucun run texte n'a eu lieu, aucun
+  échantillon n'a été généré, et ppl ≈ 1,0 sur le corpus toy ne mesure que la convergence du jouet.
