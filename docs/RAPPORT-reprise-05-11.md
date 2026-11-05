@@ -251,8 +251,9 @@ Mesures de la session de diagnostic (`docs/DIAGNOSTIC-memoire-05-11.md`) :
 
 Relance du toy : `configs/config.yaml` passe à `toy_batch: 16`, run de zéro sur 2 000 pas lancé
 le 5 novembre à 21 h (`logs_toy_v5_2000_batch16.txt`) avec `ram_mb`/`commit_mb`/VRAM dans chaque
-ligne de signes vitaux. À la rédaction de cet addendum il était au pas 100 (RAM 1 673 Mo, VRAM
-1 386 Mo, commit 4 355 Mo, 2 941 ms/pas) ; son verdict n'est pas encore lisible.
+ligne de signes vitaux. Au pas 700 il tenait : RAM 1 706 Mo (plate depuis le pas 100), VRAM
+4 062 Mo, commit 7 170 Mo, 2 125 ms/pas, perte 0,0065. Courbe complète et verdict provisoire des
+six critères : `docs/DIAGNOSTIC-memoire-05-11.md` §8.
 
 ## 10. Limites de ce rapport
 

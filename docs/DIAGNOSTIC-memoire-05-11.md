@@ -177,7 +177,50 @@ d'apprentissage (1), soit le code du forward (2), soit la portée du verdict (3)
 
 ---
 
-## 8. Nouveau critère (f), et sa formulation honnête
+## 8. Run v5 — 2 000 pas de zéro, batch 16 (en cours, 7 relevés)
+
+Commande : `python mycelia/train.py --steps 2000 --report-every 100`
+Log : `logs_toy_v5_2000_batch16.txt` — PID 33648, vivant au dernier relevé (21 h 38).
+
+| Pas | Perte | Arêtes | Nœuds vivants | RAM (Mo) | Pic (Mo) | Commit (Mo) | VRAM rés. (Mo) | ms/pas |
+|---|---|---|---|---|---|---|---|---|
+| 100 | 3,0484 | 792 | 514 | 1 673 | 1 687 | 4 355 | 1 386 | 2 941 |
+| 200 | 1,9511 | 1 544 | 514 | 1 681 | 1 709 | 4 764 | 1 752 | 3 146 |
+| 300 | 0,8177 | 2 209 | 514 | 1 686 | 1 709 | 5 416 | 2 376 | 1 847 |
+| 400 | 0,2631 | 2 762 | 498 | 1 692 | 1 709 | 5 877 | 2 816 | 2 070 |
+| 500 | 0,0560 | 3 257 | 511 | 1 726 | 1 726 | 6 357 | 3 246 | 2 051 |
+| 600 | 0,0155 | 3 679 | 515 | 1 702 | 1 726 | 6 825 | 3 734 | 2 130 |
+| 700 | 0,0065 | 4 057 | 512 | 1 706 | 1 726 | 7 170 | 4 062 | 2 125 |
+
+Lecture, sur les 700 pas mesurés :
+
+* **RAM plate** : 1 673 → 1 706 Mo, soit +33 Mo sur 700 pas et +3 265 arêtes. Le critère (f)
+  première moitié — stabilité de la résidence — est tenu, et mieux que sur le run d'observation.
+* **VRAM ∝ arêtes** : 1 386 → 4 062 Mo, soit ~0,76 Mo par arête, très proche de la pente mesurée
+  au banc (2 892 Mo à 2 200 arêtes, ~1,3 Mo/arête ; l'écart vient de l'élagage, qui fait baisser
+  le nombre d'arêtes chaudes retenues par pas).
+* **Commit** : 4 355 → 7 170 Mo, ~4 Mo/pas. La croissance reste lisible et attribuable au cache
+  CUDA ; à ce rythme, 2 000 pas termineraient vers 12–13 Go de commit, sous la limite de 32 Go,
+  **si** la VRAM ne déborde pas avant.
+* **ms/pas** : 2 941 au début (démarrage à froid, compilation des kernels), puis 1 847–2 130 en
+  régime. Le critère (d) « < 2 000 ms » n'est donc **pas tenu de façon stable** : tenu au pas
+  300, manqué de 25 à 130 ms ensuite.
+* Point de vigilance chiffré : à 8 Go de carte et ~0,76 Mo/arête, le débordement WDDM tombe vers
+  **8 000–10 000 arêtes**, soit vers le pas 1 400–1 700. Si le run meurt là, ce n'est pas une
+  surprise : c'est la prédiction du §3, et le remède mesuré est `tbptt 4`.
+
+**Verdict provisoire des six critères** (à relire dans le log une fois le run fini) :
+
+| Critère | État au pas 700 |
+|---|---|
+| (a) perte qui baisse | ✔ 3,05 → 0,0065 |
+| (b) `arêtes_nées` ≠ `nœuds_nés` | ✔ 5 353 vs 4 |
+| (c) nœuds vivants < pool | ✔ 512 / 555 |
+| (d) ms/pas < 2 000 en régime | ✗ 2 125 (tenu seulement au pas 300) |
+| (e) fin propre | ⏳ non encore atteinte |
+| (f) RAM stable + commit attribuable | ✔ RAM (+33 Mo) ; commit en croissance lente attribuée au cache |
+
+## 9. Nouveau critère (f), et sa formulation honnête
 
 Le critère demandé — « `ram_mb` stable en régime » — est **tenu** par le run d'observation
 (+26 Mo sur 400 pas). Mais il est insuffisant : la RAM était stable pendant que le commit
