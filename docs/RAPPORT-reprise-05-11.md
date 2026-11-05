@@ -243,9 +243,9 @@ Mesures de la session de diagnostic (`docs/DIAGNOSTIC-memoire-05-11.md`) :
 * **`tbptt 4` au lieu de 16** (toy) : VRAM 2 892 → **1 240 Mo**, pas 2 600 → **2 186 ms**.
 * **Débit réel** : 2,6 s/pas à 2 200 arêtes (toy), **22,1 s/pas** à 1 200 arêtes (texte, seq 128).
   Le 0,283 s/pas de la v4 n'est pas reproductible et est retiré de la documentation.
-* ETA texte recalculée : **61 h au plancher**, plusieurs jours en extrapolant la croissance des
-  arêtes. Le run texte n'est pas lançable en l'état ; trois leviers chiffrés sont proposés dans
-  le diagnostic (§6).
+* ETA texte recalculée : **61 h au plancher**, de l'ordre de **plusieurs semaines** en
+  extrapolant la croissance des arêtes (estimation grossière). Le run texte n'est pas lançable en
+  l'état ; trois leviers chiffrés sont proposés dans le diagnostic (§6).
 * **Critère (f) proposé** : `ram_mb` stable **et** `commit_mb` sans croissance monotone
   inexpliquée — la RAM seule aurait validé un run en train de mourir.
 

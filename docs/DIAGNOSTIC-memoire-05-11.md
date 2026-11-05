@@ -145,7 +145,8 @@ câblage : ~5,7 arêtes/pas (mesurée sur le toy, **(supposé)** comparable sur 
 | Hypothèse | Coût |
 |---|---|
 | Débit constant à 22,1 s/pas (plancher irréaliste) | **61 h** |
-| Coût ∝ arêtes, 57 000 arêtes au pas 10 000 **(estimé)** | > 1 000 s/pas en fin de run, **plusieurs jours** |
+| Coût moyen ∝ arêtes (28 500 arêtes en moyenne) | ~525 s/pas en moyenne, soit **~61 jours** |
+| Coût ∝ arêtes, 57 000 arêtes au pas 10 000 **(estimé)** | > 1 000 s/pas en fin de run, total de l'ordre de **plusieurs semaines** (extrapolation grossière, pas une mesure) |
 
 À cela s'ajoute le mur de VRAM : à 1 200 arêtes le texte tient (1 592 Mo réservés), mais le
 débit par arête y est déjà 6× celui du toy, et le run texte dépasse 6 000 arêtes dès le pas
