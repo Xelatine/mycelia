@@ -110,6 +110,82 @@ def pid_alive(pid: int) -> bool:
     return True
 
 
+def process_memory() -> dict[str, float]:
+    """This process's memory, in MiB: working set, peak, commit charge.
+
+    Three numbers, because they answer three different questions. The working
+    set is what is physically resident; the peak is the worst instant since
+    start (the autograd graph inside one step); the commit charge is what
+    Windows reserved, and it is the one that kills a run with no traceback.
+
+    Read with ``ctypes`` and not ``psutil``: psutil is not a dependency of this
+    project, and the diagnostic has to run on a machine whose memory is already
+    exhausted, where importing a new package is exactly what fails.
+    """
+    mib = 1024.0 * 1024.0
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+            _fields_ = [
+                ("cb", wintypes.DWORD),
+                ("PageFaultCount", wintypes.DWORD),
+                ("PeakWorkingSetSize", ctypes.c_size_t),
+                ("WorkingSetSize", ctypes.c_size_t),
+                ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                ("PagefileUsage", ctypes.c_size_t),
+                ("PeakPagefileUsage", ctypes.c_size_t),
+            ]
+
+        counters = PROCESS_MEMORY_COUNTERS()
+        counters.cb = ctypes.sizeof(PROCESS_MEMORY_COUNTERS)
+        # argtypes are not optional here: without them ctypes passes the
+        # pseudo-handle returned by GetCurrentProcess as a 32-bit int, the
+        # 64-bit handle is truncated, and the call fails with no error at all.
+        kernel32 = ctypes.WinDLL("kernel32")
+        kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+        psapi = ctypes.WinDLL("psapi")
+        psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+        psapi.GetProcessMemoryInfo.argtypes = [
+            wintypes.HANDLE,
+            ctypes.POINTER(PROCESS_MEMORY_COUNTERS),
+            wintypes.DWORD,
+        ]
+        ok = psapi.GetProcessMemoryInfo(
+            kernel32.GetCurrentProcess(),
+            ctypes.byref(counters),
+            counters.cb,
+        )
+        if not ok:
+            return {"working_set": 0.0, "peak": 0.0, "commit": 0.0}
+        return {
+            "working_set": counters.WorkingSetSize / mib,
+            "peak": counters.PeakWorkingSetSize / mib,
+            "commit": counters.PagefileUsage / mib,
+        }
+    values = {"working_set": 0.0, "peak": 0.0, "commit": 0.0}
+    try:
+        with open("/proc/self/status", encoding="utf-8") as handle:
+            for line in handle:
+                key, _, rest = line.partition(":")
+                amount = rest.strip().split()
+                if not amount:
+                    continue
+                if key == "VmRSS":
+                    values["working_set"] = float(amount[0]) / 1024.0
+                elif key == "VmHWM":
+                    values["peak"] = float(amount[0]) / 1024.0
+                elif key == "VmSize":
+                    values["commit"] = float(amount[0]) / 1024.0
+    except OSError:
+        pass
+    return values
+
+
 def acquire_lock(path: Path = LOCK_PATH) -> Path:
     """One trainer per checkpoint (C1).
 
@@ -434,6 +510,19 @@ class Trainer:
 
         # Do not keep the autograd graph of this step alive through telemetry.
         self.brain.last_node_io = []
+        # Measured at the very end of the step, after the life cycle and the
+        # growth: this is the memory the next step starts from, not the peak of
+        # the graph that has just been freed.
+        memory = process_memory()
+        metrics["ram_mb"] = round(memory["working_set"], 1)
+        metrics["ram_peak_mb"] = round(memory["peak"], 1)
+        metrics["commit_mb"] = round(memory["commit"], 1)
+        if self.device.type == "cuda":
+            # Reserved, not allocated: the caching allocator keeps whole
+            # segments, and on WDDM each segment is backed by host commit —
+            # which is how a run can die with a flat working set.
+            metrics["gpu_alloc_mb"] = round(torch.cuda.memory_allocated() / 1048576.0, 1)
+            metrics["gpu_reserved_mb"] = round(torch.cuda.memory_reserved() / 1048576.0, 1)
         return metrics
 
     def train_step(self) -> dict:
@@ -527,7 +616,14 @@ class Trainer:
             f"arêtes {metrics['edges']:5d} | nœuds {metrics['nodes']:5d} | "
             f"arêtes_nées {metrics['edge_births']:5d} | nœuds_nés {metrics['node_births']:4d} | "
             f"morts-arêtes {metrics['edge_deaths']:4d} | "
-            f"morts-nœuds {metrics['node_deaths']:4d} | cimetière {metrics['cemetery']:4d}"
+            f"morts-nœuds {metrics['node_deaths']:4d} | cimetière {metrics['cemetery']:4d} | "
+            f"RAM {metrics.get('ram_mb', 0.0):.0f} Mo "
+            f"(pic {metrics.get('ram_peak_mb', 0.0):.0f}, commit {metrics.get('commit_mb', 0.0):.0f})"
+            + (
+                f" | GPU {metrics['gpu_alloc_mb']:.0f}/{metrics['gpu_reserved_mb']:.0f} Mo"
+                if "gpu_reserved_mb" in metrics
+                else ""
+            )
         )
 
     def speak(self, prompt: str = TEXT_PROMPT, tokens: int = 40, seed: int | None = None):
@@ -630,6 +726,7 @@ class Trainer:
                         "edges": last["edges"],
                         "nodes": last["nodes"],
                         "pool": last["pool"],
+                        "ram_mb": last.get("ram_mb"),
                     }
                 )
         return last
@@ -745,8 +842,19 @@ def main(argv: list[str] | None = None) -> None:
                         "pool": metrics["pool"],
                         "edge_births": metrics["edge_births"],
                         "node_births": metrics["node_births"],
+                        "ram_mb": metrics.get("ram_mb"),
                     }
                 )
+                # Diagnostic: does a collection return anything? If yes, objects
+                # were dead but unreachable through reference counting alone.
+                if os.environ.get("MYCELIA_NO_GC_PROBE") != "1":
+                    before_gc = process_memory()["working_set"]
+                    collected = gc.collect()
+                    after_gc = process_memory()["working_set"]
+                    trainer.log(
+                        f"  gc.collect() : {before_gc:.0f} → {after_gc:.0f} Mo "
+                        f"({after_gc - before_gc:+.0f}, {collected} objets)"
+                    )
                 # C2: atomic and incremental, so the cockpit never reads a stale
                 # or half-written history.
                 write_history(trainer.history)

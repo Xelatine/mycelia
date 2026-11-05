@@ -218,6 +218,28 @@ tour**, et le chiffre reste honnête jusque-là.
 **L'ETA du run texte de 10 000 pas est donc inconnue** : à 8,5 s/pas elle dépasse
 24 h, et la courbe mesurée monte avec le câblage.
 
+**Deux mesures, deux choses différentes (5 novembre 2026).** La mesure
+d'acceptation de la v4 — « 0,283 s/pas à 2 000 arêtes » — vient d'un protocole
+ad hoc qu'aucun fichier du dépôt ne reproduit ; elle ne dit ni quel étage du pas
+elle chronométrait, ni sur quel graphe. `scripts/bench_step.py` la remplace et
+mesure les trois étages séparément, à graphe identique : à 2 200 arêtes et batch
+16, le **forward seul** coûte 1 132 ms, le **forward + backward** 2 309 ms et le
+**pas complet** (naissances, taxes, clip, optimiseur, cycle de vie) 2 600 ms ; à
+400 arêtes, 800 / 1 755 / 1 828 ms. Le chiffre de 283 ms n'est donc pas
+reproductible : même un forward nu sur un graphe cinq fois plus petit coûte le
+triple. Le régime réel d'un run est de **2,5–2,6 s/pas vers 2 200 arêtes** (toy)
+et de **22,1 s/pas vers 1 200 arêtes** (texte, séquence 128, TBPTT 16). C'est ce
+second chiffre qui sert à toute ETA, et non l'ancien.
+
+**Ce que coûte un pas, en mémoire.** La RAM résidente est plate : +26 Mo pour
++2 334 arêtes sur 400 pas, et `gc.collect()` ne rend rien. Tout le poids est dans
+les **activations conservées pour le backward**, côté carte graphique : 380 Mo à
+400 arêtes, 2 892 Mo à 2 200, et 5 900 Mo pour un graphe de 128 positions d'un
+seul tenant (OOM immédiat à 1 200 arêtes sur 8 Go). Le commit Windows suit et
+déborde en RAM système quand la VRAM sature — c'est ce qui a tué le run du
+5 novembre, sans traceback. Réduire le graphe paie : `tbptt 4` au lieu de 16 sur
+le toy fait passer la VRAM de 2 892 à 1 240 Mo et le pas de 2 600 à 2 186 ms.
+
 **Non mesuré :** un run texte complet de 10 000 pas (des heures), le tableau des
 3 seeds, et la perplexité finale du baseline Transformer. Les scripts sont
 complets et testés à petits pas ; les chiffres doivent être produits sur la

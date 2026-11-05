@@ -37,7 +37,7 @@ lifecycle:
 
 training:
   toy_steps: 2000
-  toy_batch: 32
+  toy_batch: 16            # 32 saturait la VRAM (2 900 Mo à 2 200 arêtes, OOM vers 4 000) : diagnostic du 5 novembre
   toy_seq: 10
   text_steps: 10000
   text_batch: 16
